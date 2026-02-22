@@ -1,19 +1,39 @@
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
 import numpy as np
-
-from pdf_reader import read_pdf
+from openai import OpenAI
+import PyPDF2
 from embeddings import get_embedding
 
-load_dotenv()
-client = OpenAI()
+# ==============================
+# Configuración inicial
+# ==============================
 
-PDF_PATH = "sample.pdf"
+load_dotenv()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+PDF_PATH = "sample.pdf"  # cambia el nombre si tu PDF es distinto
 CHUNK_SIZE = 500
 
+# Variables globales (se cargan una sola vez)
+chunks = []
+chunk_embeddings = []
 
-def split_text(text, size):
+
+# ==============================
+# Utilidades
+# ==============================
+
+def read_pdf(path):
+    text = ""
+    with open(path, "rb") as file:
+        reader = PyPDF2.PdfReader(file)
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+    return text
+
+
+def split_text(text, size=CHUNK_SIZE):
     return [text[i:i+size] for i in range(0, len(text), size)]
 
 
@@ -21,45 +41,73 @@ def cosine_similarity(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 
-print("Leyendo PDF...")
-text = read_pdf(PDF_PATH)
+# ==============================
+# Carga inicial (se ejecuta una vez)
+# ==============================
 
-chunks = split_text(text, CHUNK_SIZE)
+def load_document():
+    global chunks, chunk_embeddings
 
-print("Creando embeddings del documento...")
-chunk_embeddings = [get_embedding(chunk) for chunk in chunks]
+    print("Cargando PDF...")
+    text = read_pdf(PDF_PATH)
 
-print("Listo. Puedes hacer preguntas.\n")
+    print("Dividiendo en chunks...")
+    chunks = split_text(text)
 
-while True:
-    question = input("Pregunta: ")
+    print("Generando embeddings (solo una vez)...")
+    chunk_embeddings = [get_embedding(chunk) for chunk in chunks]
 
-    if question.lower() == "salir":
-        break
+    print("Documento listo.")
 
+
+# ==============================
+# Función principal para consultas
+# ==============================
+
+def ask_question(question: str):
+    # Embedding de la pregunta
     question_embedding = get_embedding(question)
 
+    # Buscar los chunks más similares
     similarities = [
         cosine_similarity(question_embedding, emb)
         for emb in chunk_embeddings
     ]
 
-    best_index = np.argmax(similarities)
-    context = chunks[best_index]
+    # Top 3 chunks
+    top_indices = np.argsort(similarities)[-3:][::-1]
+    context = "\n\n".join([chunks[i] for i in top_indices])
 
-    response = client.responses.create(
+    # Prompt
+    prompt = f"""
+Responde la pregunta usando SOLO la información del contexto.
+
+Contexto:
+{context}
+
+Pregunta:
+{question}
+"""
+
+    response = client.chat.completions.create(
         model="gpt-4.1-mini",
-        input=f"""
-        Usa el siguiente contexto para responder la pregunta.
-
-        Contexto:
-        {context}
-
-        Pregunta:
-        {question}
-        """
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
     )
 
-    print("\nRespuesta:")
-    print(response.output_text)
-    print("\n---\n")
+    return response.choices[0].message.content
+
+
+# ==============================
+# Modo consola (opcional)
+# ==============================
+
+if __name__ == "__main__":
+    load_document()
+    print("Modo consola. Escribe 'salir' para terminar.")
+    while True:
+        q = input("\nPregunta: ")
+        if q.lower() == "salir":
+            break
+        answer = ask_question(q)
+        print("\nRespuesta:", answer)
