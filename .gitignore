@@ -2,5 +2,6 @@ venv/
 .env
 __pycache__/
 *.pyc
+embeddings_cache.pkl
 *.pkl
 *.pdf

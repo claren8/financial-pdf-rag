@@ -4,6 +4,7 @@ import numpy as np
 from openai import OpenAI
 import PyPDF2
 from embeddings import get_embedding
+import pickle
 
 # ==============================
 # Configuración inicial
@@ -18,6 +19,8 @@ CHUNK_SIZE = 500
 # Variables globales (se cargan una sola vez)
 chunks = []
 chunk_embeddings = []
+
+CACHE_FILE = "embeddings_cache.pkl"
 
 
 # ==============================
@@ -48,17 +51,34 @@ def cosine_similarity(a, b):
 def load_document():
     global chunks, chunk_embeddings
 
+    # Si existe cache → cargar
+    if os.path.exists(CACHE_FILE):
+        print("Cargando embeddings desde cache...")
+        with open(CACHE_FILE, "rb") as f:
+            data = pickle.load(f)
+            chunks = data["chunks"]
+            chunk_embeddings = data["embeddings"]
+        print("Cache cargado.")
+        return
+
+    # Si no existe → procesar PDF
     print("Cargando PDF...")
     text = read_pdf(PDF_PATH)
 
     print("Dividiendo en chunks...")
     chunks = split_text(text)
 
-    print("Generando embeddings (solo una vez)...")
+    print("Generando embeddings (esto ocurre solo una vez)...")
     chunk_embeddings = [get_embedding(chunk) for chunk in chunks]
 
-    print("Documento listo.")
+    # Guardar cache
+    with open(CACHE_FILE, "wb") as f:
+        pickle.dump({
+            "chunks": chunks,
+            "embeddings": chunk_embeddings
+        }, f)
 
+    print("Embeddings guardados en cache.")
 
 # ==============================
 # Función principal para consultas
