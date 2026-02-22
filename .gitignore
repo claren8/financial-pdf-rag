@@ -5,3 +5,4 @@ __pycache__/
 embeddings_cache.pkl
 *.pkl
 *.pdf
+documents/

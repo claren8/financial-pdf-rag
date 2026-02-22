@@ -22,6 +22,9 @@ chunk_embeddings = []
 
 CACHE_FILE = "embeddings_cache.pkl"
 
+DOCUMENTS_FOLDER = "documents"
+os.makedirs(DOCUMENTS_FOLDER, exist_ok=True)
+
 
 # ==============================
 # Utilidades
@@ -117,6 +120,26 @@ Pregunta:
 
     return response.choices[0].message.content
 
+
+def process_pdf(path):
+    global chunks, chunk_embeddings
+
+    print(f"Procesando {path}...")
+    text = read_pdf(path)
+    new_chunks = split_text(text)
+    new_embeddings = [get_embedding(chunk) for chunk in new_chunks]
+
+    chunks.extend(new_chunks)
+    chunk_embeddings.extend(new_embeddings)
+
+    # Actualizar cache
+    with open(CACHE_FILE, "wb") as f:
+        pickle.dump({
+            "chunks": chunks,
+            "embeddings": chunk_embeddings
+        }, f)
+
+    print(f"{path} agregado al índice.")
 
 # ==============================
 # Modo consola (opcional)
